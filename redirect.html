@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Centsora OAuth Redirect</title>
+  </head>
+  <body>
+    <p>Returning to Centsora...</p>
+    <p><a id="fallback" href="#">Open Centsora</a></p>
+    <script>
+      const target =
+        'intent://oauth2redirect' +
+        window.location.search +
+        '#Intent;scheme=com.centsora.app;package=com.centsora.app;end';
+      document.getElementById('fallback').href = target;
+      window.location.replace(target);
+    </script>
+  </body>
+</html>
