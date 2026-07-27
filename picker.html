@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Centsora — pick your partner's budget file</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Roboto, sans-serif;
+             margin: 0; padding: 24px; background: #F5F6F8; color: #1b1c1e; }
+      #status { font-size: 16px; line-height: 1.5; }
+      .hint { color: #5f6368; font-size: 14px; margin-top: 12px; }
+      a { color: #16A34A; }
+    </style>
+  </head>
+  <body>
+    <p id="status">Opening your Google Drive…</p>
+    <p class="hint" id="hint"></p>
+    <p><a id="fallback" href="#" hidden>Return to Centsora</a></p>
+
+    <script>
+      // Centsora file picker (T42).
+      //
+      // Google's `trigger_onepick` OAuth picker stopped completing on Android
+      // in July 2026: the picker renders, Insert fires, and the page never
+      // navigates — reproduced on two devices, two accounts, in a Custom Tab,
+      // in full Chrome, and with no Centsora code running at all, while the
+      // same URL still completes in desktop Chrome. This page replaces only
+      // the FILE SELECTION step with the JS Picker, and does its own return
+      // hop, which is the mechanism that does still work (it is how sign-in
+      // gets back into the app).
+      //
+      // It must run in a Chrome Custom Tab, NOT an in-app WebView: the Picker
+      // requires the user's Google session cookies, and a fresh WebView has
+      // none ("Can't access your Google Account" — verified 2026-07-27).
+      //
+      // Parameters arrive in the URL FRAGMENT, never the query string, so the
+      // access token is not sent to GitHub Pages and stays out of server logs:
+      //   #token=<oauth access token>&key=<browser api key>&appid=<project number>
+      //   &state=<opaque echo>            (optional, returned untouched)
+      //   &q=<filename filter>            (optional, pre-filters the list)
+      //
+      // Returns to the app via our OWN redirect:
+      //   intent://picked?ids=<id,id>&state=<state>#Intent;scheme=com.centsora.app;package=com.centsora.app;end
+      //   intent://cancelled?state=<state>#Intent;...
+      //   intent://failed?reason=<code>&state=<state>#Intent;...
+
+      var statusEl = document.getElementById('status');
+      var hintEl = document.getElementById('hint');
+      var fallbackEl = document.getElementById('fallback');
+      var returned = false;
+
+      function params() {
+        var raw = (window.location.hash || '').replace(/^#/, '');
+        var out = {};
+        raw.split('&').forEach(function (pair) {
+          if (!pair) return;
+          var i = pair.indexOf('=');
+          if (i < 0) return;
+          out[decodeURIComponent(pair.slice(0, i))] =
+            decodeURIComponent(pair.slice(i + 1));
+        });
+        return out;
+      }
+
+      var p = params();
+
+      function backToApp(path, extra) {
+        if (returned) return;
+        returned = true;
+        var query = extra || '';
+        if (p.state) {
+          query += (query ? '&' : '') + 'state=' + encodeURIComponent(p.state);
+        }
+        var target = 'intent://' + path + (query ? '?' + query : '') +
+          '#Intent;scheme=com.centsora.app;package=com.centsora.app;end';
+        fallbackEl.href = target;
+        fallbackEl.hidden = false;
+        // Drop the token from the address bar before leaving, so it does not
+        // linger in Chrome history or the tab switcher.
+        try {
+          history.replaceState(null, '', window.location.pathname);
+        } catch (e) { /* not fatal */ }
+        window.location.replace(target);
+      }
+
+      function fail(reason, message) {
+        statusEl.textContent = message;
+        hintEl.textContent = 'If nothing happens, tap the link below.';
+        backToApp('failed', 'reason=' + encodeURIComponent(reason));
+      }
+
+      if (!p.token || !p.key || !p.appid) {
+        fail('missing-params', 'This link is incomplete. Start again from Centsora.');
+      } else {
+        var s = document.createElement('script');
+        s.src = 'https://apis.google.com/js/api.js';
+        s.onerror = function () {
+          fail('api-load-failed', 'Could not reach Google. Check your connection and try again.');
+        };
+        s.onload = function () {
+          statusEl.textContent = 'Loading the file picker…';
+          gapi.load('picker', {
+            callback: showPicker,
+            onerror: function () {
+              fail('picker-module-failed', 'Google’s file picker could not start.');
+            }
+          });
+        };
+        document.head.appendChild(s);
+      }
+
+      function showPicker() {
+        try {
+          var view = new google.picker.DocsView(google.picker.ViewId.DOCS)
+            .setIncludeFolders(false)
+            .setSelectFolderEnabled(false)
+            .setOwnedByMe(false);
+          if (p.q) view.setQuery(p.q);
+
+          var builder = new google.picker.PickerBuilder()
+            .setOAuthToken(p.token)
+            .setDeveloperKey(p.key)
+            .setAppId(p.appid)
+            .setTitle('Choose your partner’s Centsora file')
+            .addView(view)
+            .setCallback(onPicked);
+
+          builder.build().setVisible(true);
+          statusEl.textContent = 'Choose the file, then tap Select.';
+        } catch (e) {
+          fail('picker-build-failed', 'Google’s file picker could not open.');
+        }
+      }
+
+      function onPicked(data) {
+        if (!data || !data.action) return;
+        if (data.action === google.picker.Action.PICKED) {
+          var docs = data.docs || [];
+          var ids = docs.map(function (d) { return d.id; }).filter(Boolean);
+          if (!ids.length) {
+            fail('empty-selection', 'No file was selected.');
+            return;
+          }
+          statusEl.textContent = 'Returning to Centsora…';
+          backToApp('picked', 'ids=' + encodeURIComponent(ids.join(',')));
+        } else if (data.action === google.picker.Action.CANCEL) {
+          statusEl.textContent = 'Cancelled. Returning to Centsora…';
+          backToApp('cancelled', '');
+        }
+      }
+    </script>
+  </body>
+</html>
