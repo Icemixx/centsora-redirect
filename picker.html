@@ -9,16 +9,37 @@
              margin: 0; padding: 24px; background: #F5F6F8; color: #1b1c1e; }
       #status { font-size: 16px; line-height: 1.5; }
       .hint { color: #5f6368; font-size: 14px; margin-top: 12px; }
-      a { color: #16A34A; }
+      /* Chrome blocks the automatic redirect below because the Picker's
+         callback runs without a user gesture, so this button is the primary
+         return path, not a fallback — sized as an obvious, full-width tap
+         target (device-verified 2026-07-27). */
+      #fallback {
+        display: block;
+        margin-top: 20px;
+        padding: 14px 20px;
+        min-height: 48px;
+        box-sizing: border-box;
+        background: #16A34A;
+        color: #ffffff;
+        text-align: center;
+        text-decoration: none;
+        font-size: 17px;
+        font-weight: 600;
+        border-radius: 14px;
+      }
     </style>
   </head>
   <body>
     <p id="status">Opening your Google Drive…</p>
     <p class="hint" id="hint"></p>
-    <p><a id="fallback" href="#" hidden>Return to Centsora</a></p>
+    <a id="fallback" href="#" hidden>Return to Centsora</a>
 
     <script>
       // Centsora file picker (T42).
+      //
+      // NOTE: this page is published to GitHub Pages BY HAND — it must be
+      // redeployed there after any edit; editing this checked-in copy alone
+      // changes nothing live.
       //
       // Google's `trigger_onepick` OAuth picker stopped completing on Android
       // in July 2026: the picker renders, Insert fires, and the page never
@@ -85,7 +106,7 @@
 
       function fail(reason, message) {
         statusEl.textContent = message;
-        hintEl.textContent = 'If nothing happens, tap the link below.';
+        hintEl.textContent = 'Tap the button below to finish in Centsora.';
         backToApp('failed', 'reason=' + encodeURIComponent(reason));
       }
 
@@ -109,21 +130,49 @@
         document.head.appendChild(s);
       }
 
+      // Shared-with-me files only: the peer's budget file is never owned by
+      // the person picking it.
+      function sharedFilesView() {
+        return new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setIncludeFolders(false)
+          .setSelectFolderEnabled(false)
+          .setOwnedByMe(false);
+      }
+
+      // Optional Picker view tuning. `setQuery`/`setLabel` are only ever
+      // convenience — narrowing and tab names. If a Picker build ever drops
+      // or renames one, calling it blind would throw inside the builder and
+      // take the ENTIRE picker down (picker-build-failed), killing pairing
+      // for a cosmetic feature. Applying them only when present degrades to
+      // a plain unlabelled list instead, which still pairs.
+      function tune(view, method, value) {
+        if (typeof view[method] === 'function') view[method](value);
+        return view;
+      }
+
       function showPicker() {
         try {
-          var view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-            .setIncludeFolders(false)
-            .setSelectFolderEnabled(false)
-            .setOwnedByMe(false);
-          if (p.q) view.setQuery(p.q);
-
           var builder = new google.picker.PickerBuilder()
             .setOAuthToken(p.token)
             .setDeveloperKey(p.key)
             .setAppId(p.appid)
             .setTitle('Choose your partner’s Centsora file')
-            .addView(view)
             .setCallback(onPicked);
+
+          // With `q` the first view is narrowed to the file named by the QR,
+          // so the user taps one file in a list of one. ALWAYS add the
+          // unfiltered view behind it: Picker's query is a name search whose
+          // exact matching behaviour we do not control, and a filter that
+          // matches nothing would otherwise strand the user in an empty
+          // picker with no way to widen it. Two tabs = the narrowing is a
+          // shortcut, never a trap.
+          if (p.q) {
+            builder.addView(
+              tune(tune(sharedFilesView(), 'setQuery', p.q), 'setLabel', 'Your partner’s file'));
+            builder.addView(tune(sharedFilesView(), 'setLabel', 'All shared files'));
+          } else {
+            builder.addView(sharedFilesView());
+          }
 
           builder.build().setVisible(true);
           statusEl.textContent = 'Choose the file, then tap Select.';
@@ -142,6 +191,7 @@
             return;
           }
           statusEl.textContent = 'Returning to Centsora…';
+          hintEl.textContent = 'Tap the button below to finish in Centsora.';
           backToApp('picked', 'ids=' + encodeURIComponent(ids.join(',')));
         } else if (data.action === google.picker.Action.CANCEL) {
           statusEl.textContent = 'Cancelled. Returning to Centsora…';
