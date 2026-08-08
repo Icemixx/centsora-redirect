@@ -139,6 +139,14 @@
           .setOwnedByMe(false);
       }
 
+      // Broader than the exact QR-provided partner filename but still scoped
+      // to Centsora-like `data-{deviceId}.json` names. Picker exposes name
+      // search rather than a regex/prefix predicate, so `data-` is the
+      // narrowest safe recovery hint that does not assume a specific peer.
+      function centsoraFilesView() {
+        return tune(sharedFilesView(), 'setQuery', 'data-');
+      }
+
       // Optional Picker view tuning. `setQuery`/`setLabel` are only ever
       // convenience — narrowing and tab names. If a Picker build ever drops
       // or renames one, calling it blind would throw inside the builder and
@@ -161,17 +169,17 @@
 
           // With `q` the first view is narrowed to the file named by the QR,
           // so the user taps one file in a list of one. ALWAYS add the
-          // unfiltered view behind it: Picker's query is a name search whose
-          // exact matching behaviour we do not control, and a filter that
-          // matches nothing would otherwise strand the user in an empty
-          // picker with no way to widen it. Two tabs = the narrowing is a
-          // shortcut, never a trap.
+          // broader Centsora-files view behind it: Picker's query is a name
+          // search whose exact matching behaviour we do not control, and a
+          // filter that matches nothing would otherwise strand the user in
+          // an empty picker with no way to widen it. Two tabs = the narrowing
+          // is a shortcut, never a trap.
           if (p.q) {
             builder.addView(
               tune(tune(sharedFilesView(), 'setQuery', p.q), 'setLabel', 'Your partner’s file'));
-            builder.addView(tune(sharedFilesView(), 'setLabel', 'All shared files'));
+            builder.addView(tune(centsoraFilesView(), 'setLabel', 'Centsora files'));
           } else {
-            builder.addView(sharedFilesView());
+            builder.addView(centsoraFilesView());
           }
 
           builder.build().setVisible(true);
