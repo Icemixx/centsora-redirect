@@ -4,16 +4,73 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Centsora OAuth Redirect</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Roboto, sans-serif;
+             margin: 0; padding: 24px; background: #F5F6F8; color: #1b1c1e; }
+      #status { font-size: 16px; line-height: 1.5; }
+      .hint { color: #5f6368; font-size: 14px; margin-top: 12px; }
+      /* Same fix as picker.html (T42, device-verified 2026-07-27): "Chrome
+         blocks the automatic redirect below because the [...] callback runs
+         without a user gesture, so this button is the primary return path,
+         not a fallback — sized as an obvious, full-width tap target."
+         BUG-038's sync gate (2026-08-17) found this OAuth consent-redirect
+         page never received that fix: it still only offered a tiny inline
+         text link, hidden by nothing but easy to miss, so a user whose
+         browser silently dropped the automatic intent:// hop had no obvious
+         way back into the app — see BUG-036. */
+      #fallback {
+        display: block;
+        margin-top: 20px;
+        padding: 14px 20px;
+        min-height: 48px;
+        box-sizing: border-box;
+        background: #16A34A;
+        color: #ffffff;
+        text-align: center;
+        text-decoration: none;
+        font-size: 17px;
+        font-weight: 600;
+        border-radius: 14px;
+      }
+    </style>
   </head>
   <body>
-    <p>Returning to Centsora...</p>
-    <p><a id="fallback" href="#">Open Centsora</a></p>
+    <p id="status">Finishing sign-in…</p>
+    <p class="hint" id="hint">Tap the button below if this doesn't happen automatically.</p>
+    <a id="fallback" href="#">Return to Centsora</a>
     <script>
+      // Centsora OAuth redirect landing page (T12).
+      //
+      // NOTE: this page is published to GitHub Pages BY HAND — it must be
+      // redeployed there after any edit; editing this checked-in copy alone
+      // changes nothing live. (Same caveat as picker.html.)
+      //
+      // By the time Google redirects here, the OAuth exchange has already
+      // happened on Google's side — this page's only job is handing the
+      // result back to the app via our own `intent://` scheme so
+      // GoogleDriveAuthService._authorize() can read it and (on success)
+      // complete the token exchange. Google appends `code`/`state`, or
+      // `error`/`state` on a decline, as an ordinary QUERY string (not a
+      // fragment) per the OAuth2 spec, so that is what is forwarded
+      // untouched — this page does not interpret success or failure itself,
+      // it only reports whether Google's response carried an error, since
+      // only the app can tell whether the subsequent token exchange works.
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('error')) {
+        document.getElementById('status').textContent =
+          'Something went wrong finishing sign-in.';
+      }
       const target =
         'intent://oauth2redirect' +
         window.location.search +
         '#Intent;scheme=com.centsora.app;package=com.centsora.app;end';
       document.getElementById('fallback').href = target;
+      // Drop the code/error from the address bar before leaving, so it does
+      // not linger in Chrome history or the tab switcher (same as
+      // picker.html's backToApp()).
+      try {
+        history.replaceState(null, '', window.location.pathname);
+      } catch (e) { /* not fatal */ }
       window.location.replace(target);
     </script>
   </body>
